@@ -1133,23 +1133,21 @@ ${perfil}
     ]
 
     const respuestaOllama = await fetch(
-      'http://localhost:11434/api/chat',
-      {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          model: 'gemma:2b-instruct-q4_K_M',
-          messages: mensajesOllama,
-          stream: false,
-          options: {
-            temperature: 0.4,
-            num_ctx: 4096,
-          },
-        }),
-      },
-    )
+  'https://api.groq.com/openai/v1/chat/completions',
+  {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${process.env.GROQ_API_KEY}`
+    },
+    body: JSON.stringify({
+      model: 'llama-3.3-70b-versatile', // Modelo gratuito y rapidísimo en Groq
+      messages: mensajesOllama,
+      temperature: 0.4,
+      max_tokens: 1024
+    }),
+  }
+)
 
     if (!respuestaOllama.ok) {
       throw new Error(
