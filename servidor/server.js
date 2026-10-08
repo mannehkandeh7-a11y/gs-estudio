@@ -271,10 +271,10 @@ Formato obligatorio:
 No devuelvas ningún otro campo.
 `
 
-console.log('RESPUESTA DEL ALUMNO ENVIADA A GEMMA:', respuesta)   
-console.log('SOLUCIÓN ENVIADA A GEMMA:', solucion)
+    console.log('RESPUESTA DEL ALUMNO ENVIADA A IA:', respuesta)    
+    console.log('SOLUCIÓN ENVIADA A IA:', solucion)
 
-const respuestaOllama = await fetch(
+    const respuestaOllama = await fetch(
       'http://localhost:11434/api/generate',
       {
         method: 'POST',
@@ -282,7 +282,7 @@ const respuestaOllama = await fetch(
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          model: 'gemma:2b-instruct-q4_K_M',
+          model: process.env.IA_MODELO || 'llama-3.3-70b-versatile',
           prompt,
           stream: false,
           format: 'json',
@@ -295,16 +295,16 @@ const respuestaOllama = await fetch(
 
     if (!respuestaOllama.ok) {
       throw new Error(
-        `Ollama respondió con ${respuestaOllama.status}`,
+        `El servicio de IA respondió con ${respuestaOllama.status}`,
       )
     }
 
     const datos = await respuestaOllama.json()
 
-    let texto = datos.response.trim()
+    let texto = (datos.response || datos.choices?.[0]?.message?.content || '').trim()
 
     console.log(
-      'RESPUESTA DE GEMMA:',
+      'RESPUESTA DE LA IA:',
       texto,
     )
 
@@ -316,133 +316,90 @@ const respuestaOllama = await fetch(
 
     const correccion = JSON.parse(texto)
 
-    const respuestaNormalizada =
-  respuesta
-    .trim()
-    .toLowerCase()
+    const respuestaNormalizada = respuesta.trim().toLowerCase()
+    const solucionNormalizada = solucion.trim().toLowerCase()
 
-const solucionNormalizada =
-  solucion
-    .trim()
-    .toLowerCase()
+    if (respuestaNormalizada === solucionNormalizada) {
+      res.json({
+        correcta: true,
+        xp: xpMaxima,
+        comentario: 'La respuesta coincide con la solución esperada.',
+      })
+      return
+    }
 
-if (
-  respuestaNormalizada ===
-  solucionNormalizada
-) {
-  res.json({
-    correcta: true,
-    xp: xpMaxima,
-    comentario:
-      'La respuesta coincide con la solución esperada.',
-  })
+    const ideasEsenciales = Number(correccion.ideas_esenciales)
+    const ideasPresentes = Number(correccion.ideas_presentes)
 
-  return
-}
+    console.log('IDEAS ESENCIALES:', ideasEsenciales)
+    console.log('IDEAS PRESENTES:', ideasPresentes)
 
-    const ideasEsenciales = Number(
-  correccion.ideas_esenciales,
-)
-
-const ideasPresentes = Number(
-  correccion.ideas_presentes,
-)
-
-console.log(
-  'IDEAS ESENCIALES:',
-  ideasEsenciales,
-)
-
-console.log(
-  'IDEAS PRESENTES:',
-  ideasPresentes,
-)
-
-if (
-  !Number.isInteger(ideasEsenciales) ||
-  !Number.isInteger(ideasPresentes) ||
-  ideasEsenciales <= 0 ||
-  ideasPresentes < 0 ||
-  ideasPresentes > ideasEsenciales
-) {
-  throw new Error(
-    'Gemma devolvió un número de ideas inválido.',
-  )
-}
+    if (
+      !Number.isInteger(ideasEsenciales) ||
+      !Number.isInteger(ideasPresentes) ||
+      ideasEsenciales <= 0 ||
+      ideasPresentes < 0 ||
+      ideasPresentes > ideasEsenciales
+    ) {
+      throw new Error('La IA devolvió un número de ideas inválido.')
+    }
 
     let xpFinal = 0
-let correctaFinal = false
+    let correctaFinal = false
 
-if (
-  ideasPresentes === ideasEsenciales
-) {
-  xpFinal = xpMaxima
-  correctaFinal = true
-}
+    if (ideasPresentes === ideasEsenciales) {
+      xpFinal = xpMaxima
+      correctaFinal = true
+    }
 
     const resultadoFinal = {
       correcta: correctaFinal,
       xp: xpFinal,
-      comentario:
-        String(
-          correccion.comentario || '',
-        ).trim(),
+      comentario: String(correccion.comentario || '').trim(),
     }
 
-    console.log(
-      'RESULTADO FINAL:',
-      resultadoFinal,
-    )
+    console.log('RESULTADO FINAL:', resultadoFinal)
 
     res.json(resultadoFinal)
   } catch (error) {
-    console.error(
-      'Error corrigiendo respuesta:',
-      error,
-    )
+    console.error('Error corrigiendo respuesta:', error)
 
     res.status(500).json({
-      error:
-        'No se ha podido corregir la respuesta.',
+      error: 'No se ha podido corregir la respuesta.',
     })
   }
 })
-app.post(
-  '/extraer-pdf',
-  upload.single('pdf'),
-  async (req, res) => {
-    try {
-      if (!req.file) {
-        return res.status(400).json({
-          error: 'No se ha recibido ningún PDF.',
-        })
-      }
 
-      const parser = new PDFParse({
-  data: req.file.buffer,
-})
+app.post('/extraer-pdf', upload.single('pdf'), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({
+        error: 'No se ha recibido ningún PDF.',
+      })
+    }
 
-const resultado = await parser.getText()
+    const parser = new PDFParse({
+      data: req.file.buffer,
+    })
 
-await parser.destroy()
+    const resultado = await parser.getText()
 
-const texto = resultado.text
+    await parser.destroy()
 
-      res.json({
-  texto,
-})
-    } catch (error) {
-      console.error(
-        'Error extrayendo PDF:',
-        error,
-      )
+    const texto = resultado.text
 
-      res.status(500).json({
-  error:
-    'No se ha podido leer el PDF.',
-})
+    res.json({
+      texto,
+    })
+  } catch (error) {
+    console.error('Error extrayendo PDF:', error)
+
+    res.status(500).json({
+      error: 'No se ha podido leer el PDF.',
+    })
   }
 })
+
 app.post('/generar-recomendacion', async (req, res) => {
   console.log('ENTRÓ EN GENERAR-RECOMENDACION')
 
@@ -466,24 +423,25 @@ La recomendación debe ser clara, útil y motivadora.
 Devuelve únicamente el texto de la recomendación.
 `
 
-console.log('LLAMANDO A OLLAMA PARA RECOMENDACIÓN')
+    console.log('LLAMANDO A LA IA PARA RECOMENDACIÓN')
 
-const respuesta = await fetch('http://localhost:11434/api/generate', {
+    const respuesta = await fetch('http://localhost:11434/api/generate', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'gemma:2b-instruct-q4_K_M',
+        model: process.env.IA_MODELO || 'llama-3.3-70b-versatile',
         prompt,
         stream: false,
       }),
     })
 
     const datos = await respuesta.json()
+    const textoRespuesta = datos.response || datos.choices?.[0]?.message?.content || ''
 
     res.json({
-      recomendacion: datos.response,
+      recomendacion: textoRespuesta,
     })
   } catch (error) {
     console.error('ERROR GENERANDO RECOMENDACIÓN:', error)
@@ -496,12 +454,9 @@ const respuesta = await fetch('http://localhost:11434/api/generate', {
 
 function instruccionDificultad(dificultad) {
   const descripciones = {
-    facil:
-      'una sola idea principal, con una pregunta directa y sencilla de comprensión',
-    media:
-      'aplicar un concepto a una situación concreta y sencilla',
-    dificil:
-      'un caso práctico que obligue a combinar varios conceptos o a justificar una decisión',
+    facil: 'una sola idea principal, con una pregunta directa y sencilla de comprensión',
+    media: 'aplicar un concepto a una situación concreta y sencilla',
+    dificil: 'un caso práctico que obligue a combinar varios conceptos o a justificar una decisión',
   }
 
   if (!descripciones[dificultad]) {
@@ -509,7 +464,6 @@ function instruccionDificultad(dificultad) {
   }
 
   return `
-
 DIFICULTAD OBLIGATORIA: los ejercicios deben ser de dificultad "${dificultad}": ${descripciones[dificultad]}.
 Pon "${dificultad}" en el campo "dificultad".
 `
@@ -601,7 +555,7 @@ No inventes información que no aparezca en el contenido.
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          model: 'gemma:2b-instruct-q4_K_M',
+          model: process.env.IA_MODELO || 'llama-3.3-70b-versatile',
           prompt,
           stream: false,
           format: 'json',
@@ -614,28 +568,22 @@ No inventes información que no aparezca en el contenido.
 
     if (!respuestaOllama.ok) {
       throw new Error(
-        `Ollama respondió con ${respuestaOllama.status}`,
+        `El servicio de IA respondió con ${respuestaOllama.status}`,
       )
     }
 
     const datos = await respuestaOllama.json()
-    const ejercicio = JSON.parse(datos.response)
+    const textoRespuesta = datos.response || datos.choices?.[0]?.message?.content || ''
+    const ejercicio = JSON.parse(textoRespuesta)
 
-    console.log(
-      'EJERCICIO NUEVO GENERADO:',
-      ejercicio,
-    )
+    console.log('EJERCICIO NUEVO GENERADO:', ejercicio)
 
     res.json(ejercicio)
   } catch (error) {
-    console.error(
-      'Error generando un ejercicio:',
-      error,
-    )
+    console.error('Error generando un ejercicio:', error)
 
     res.status(500).json({
-      error:
-        'No se ha podido generar el ejercicio.',
+      error: 'No se ha podido generar el ejercicio.',
     })
   }
 })
@@ -666,79 +614,7 @@ Los ejercicios deben basarse únicamente en el contenido proporcionado.
 No repitas ninguno de los ejercicios anteriores indicados arriba.
 Cada ejercicio debe utilizar un enfoque o situación diferente.
 
-- Los ejercicios deben ser específicos y estar directamente relacionados con el contenido.
-REGLAS OBLIGATORIAS PARA LOS EJERCICIOS:
-
-1. El campo "titulo" debe ser SOLO un título breve del ejercicio.
-   NO debe contener la respuesta.
-
-2. El campo "enunciado" es lo que verá el alumno ANTES de responder.
-   Por tanto, DEBE ser una pregunta, instrucción, caso práctico, situación o tarea que el alumno tenga que resolver.
-
-3. PROHIBIDO poner la respuesta directamente en "enunciado".
-
-4. PROHIBIDO que "enunciado" sea simplemente una explicación o resumen del contenido.
-
-5. "enunciado" debe decir claramente QUÉ TIENE QUE HACER EL ALUMNO.
-
-6. "solucion" debe contener la respuesta correcta al ejercicio planteado en "enunciado".
-
-7. Si el ejercicio pregunta "¿Qué es...?", el enunciado debe formular la pregunta, NO responderla.
-
-8. NUNCA copies un párrafo completo del contenido como "enunciado".
-
-Si necesitas utilizar información de un párrafo, NO la des como respuesta dentro del enunciado.
-
-El "enunciado" debe empezar directamente con una pregunta, instrucción, caso práctico o tarea.
-
-Ejemplo INCORRECTO:
-"El carnet A2 es el carnet intermedio de moto que permite conducir motocicletas de hasta 35 kW. Explica qué es el carnet A2."
-
-Ejemplo CORRECTO:
-"Explica qué es el carnet A2 y qué motocicletas permite conducir."
-
-Ejemplo CORRECTO:
-"Indica cuáles son las condiciones que debe cumplir una motocicleta para poder conducirse con el carnet A2."
-
-IMPORTANTE:
-El alumno NO debe recibir la información que constituye la respuesta antes de responder.
-
-EJEMPLO CORRECTO:
-
-{
-  "titulo": "Carnet A2",
-  "enunciado": "Explica qué motocicletas permite conducir el carnet A2 e indica cuál es la potencia máxima y la relación potencia/peso permitida.",
-  "solucion": "El carnet A2 permite conducir motocicletas de hasta 35 kW y con una relación potencia/peso máxima de 0,2 kW/kg."
-}
-
-OTRO EJEMPLO CORRECTO:
-
-{
-  "titulo": "Aplicación del carnet A2",
-  "enunciado": "Una persona tiene el carnet A2 y quiere comprar una motocicleta de 40 kW. ¿Puede conducirla? Justifica tu respuesta utilizando las condiciones del carnet A2.",
-  "solucion": "No puede conducirla porque el carnet A2 permite motocicletas de hasta 35 kW."
-}
-
-EJEMPLO INCORRECTO:
-
-{
-  "titulo": "¿Qué es el carnet A2?",
-  "enunciado": "El carnet A2 es el carnet intermedio de moto que permite conducir...",
-  "solucion": "El carnet A2 permite conducir..."
-}
-
-ANTES DE DEVOLVER CADA EJERCICIO COMPRUEBA:
-
-- ¿El alumno sabe exactamente qué tiene que hacer leyendo SOLO el "enunciado"?
-- ¿El "enunciado" contiene una pregunta, instrucción, caso o tarea?
-- ¿El "enunciado" evita dar directamente la respuesta?
-- ¿La "solucion" responde exactamente a ese enunciado?
-
-Si alguna respuesta es NO, corrige el ejercicio antes de devolverlo.
-
-Recuerda: el alumno verá "enunciado" ANTES de responder. Por tanto, debe ser una pregunta, instrucción, caso práctico o situación que le pida realizar algo, nunca la respuesta.
-
-   Devuelve SOLO un JSON válido con este formato:
+Devuelve SOLO un JSON válido con este formato:
 
 {
   "ejercicios": [
@@ -754,18 +630,6 @@ Recuerda: el alumno verá "enunciado" ANTES de responder. Por tanto, debe ser un
 }
 
 Genera exactamente 5 ejercicios.
-
-Usa dificultades:
-- facil
-- media
-- dificil
-
-Usa XP:
-- facil: 10
-- media: 20
-- dificil: 30
-
-No inventes información que no aparezca en el contenido.
 `
 
     const respuestaOllama = await fetch(
@@ -776,7 +640,7 @@ No inventes información que no aparezca en el contenido.
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          model: 'gemma:2b-instruct-q4_K_M',
+          model: process.env.IA_MODELO || 'llama-3.3-70b-versatile',
           prompt,
           stream: false,
           format: 'json',
@@ -789,28 +653,22 @@ No inventes información que no aparezca en el contenido.
 
     if (!respuestaOllama.ok) {
       throw new Error(
-        `Ollama respondió con ${respuestaOllama.status}`,
+        `El servicio de IA respondió con ${respuestaOllama.status}`,
       )
     }
 
     const datos = await respuestaOllama.json()
-    const ejercicios = JSON.parse(datos.response)
+    const textoRespuesta = datos.response || datos.choices?.[0]?.message?.content || ''
+    const ejercicios = JSON.parse(textoRespuesta)
 
-    console.log(
-      'EJERCICIOS GENERADOS:',
-      ejercicios,
-    )
+    console.log('EJERCICIOS GENERADOS:', ejercicios)
 
     res.json(ejercicios)
   } catch (error) {
-    console.error(
-      'Error generando ejercicios:',
-      error,
-    )
+    console.error('Error generando ejercicios:', error)
 
     res.status(500).json({
-      error:
-        'No se han podido generar los ejercicios.',
+      error: 'No se han podido generar los ejercicios.',
     })
   }
 })
@@ -841,22 +699,8 @@ ${texto}
 EJERCICIOS QUE EL ALUMNO HA FALLADO:
 ${JSON.stringify(ejerciciosFallados)}
 
-EJERCICIOS YA EXISTENTES (no repitas ninguno de estos enunciados):
+EJERCICIOS YA EXISTENTES:
 ${JSON.stringify(ejerciciosAnteriores ?? [])}
-
-REGLAS:
-- El ejercicio debe trabajar el MISMO concepto que los ejercicios fallados, porque es lo que el alumno necesita reforzar.
-- El enunciado debe ser diferente: usa otra pregunta, otra situación u otro enfoque. No copies un enunciado anterior ni cambies solo unas palabras.
-- Debe ser más fácil de resolver que los ejercicios fallados: una sola idea principal y un enunciado claro y directo.
-- La dificultad debe ser "facil" o "media". Nunca "dificil".
-- Basa el ejercicio únicamente en el contenido de estudio. No inventes información.
-- El campo "enunciado" es lo que verá el alumno ANTES de responder: debe ser una pregunta, instrucción o caso práctico. NUNCA debe contener la respuesta.
-- Si el ejercicio necesita un texto o fragmento concreto, inclúyelo dentro del propio enunciado. No escribas "según el texto" si el texto no aparece en el enunciado.
-- La "solucion" debe responder exactamente a lo que pregunta el enunciado, de forma concreta.
-- El "titulo" debe ser corto y específico. Nunca uses títulos genéricos como "Ejercicio 1" o "Pregunta".
-
-Ejemplo de enunciado CORRECTO:
-"Una persona tiene el carnet A2 y quiere comprar una motocicleta de 40 kW. ¿Puede conducirla? Justifica tu respuesta."
 
 Devuelve SOLO un JSON válido con este formato:
 
@@ -870,10 +714,6 @@ Devuelve SOLO un JSON válido con este formato:
     "xp": 10
   }
 }
-
-Usa:
-- facil: 10 XP
-- media: 20 XP
 `
 
     const respuestaOllama = await fetch(
@@ -884,7 +724,7 @@ Usa:
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          model: 'gemma:2b-instruct-q4_K_M',
+          model: process.env.IA_MODELO || 'llama-3.3-70b-versatile',
           prompt,
           stream: false,
           format: 'json',
@@ -897,32 +737,28 @@ Usa:
 
     if (!respuestaOllama.ok) {
       throw new Error(
-        `Ollama respondió con ${respuestaOllama.status}`,
+        `El servicio de IA respondió con ${respuestaOllama.status}`,
       )
     }
 
     const datos = await respuestaOllama.json()
-    const resultado = JSON.parse(datos.response)
+    const textoRespuesta = datos.response || datos.choices?.[0]?.message?.content || ''
+    const resultado = JSON.parse(textoRespuesta)
 
-        const ejercicio = resultado.ejercicio ?? resultado
+    const ejercicio = resultado.ejercicio ?? resultado
 
     if (!ejercicio || !ejercicio.enunciado || !ejercicio.solucion) {
-      console.error('Gemma devolvió un ejercicio incompleto:', resultado)
-      throw new Error('Gemma devolvió un ejercicio incompleto.')
+      throw new Error('La IA devolvió un ejercicio incompleto.')
     }
 
     console.log('EJERCICIO DE REFUERZO GENERADO:', ejercicio)
 
     res.json({ ejercicio })
   } catch (error) {
-    console.error(
-      'Error generando ejercicio de refuerzo:',
-      error,
-    )
+    console.error('Error generando ejercicio de refuerzo:', error)
 
     res.status(500).json({
-      error:
-        'No se ha podido generar el ejercicio de refuerzo.',
+      error: 'No se ha podido generar el ejercicio de refuerzo.',
     })
   }
 })
@@ -941,30 +777,24 @@ app.post('/explicar-concepto', async (req, res) => {
 Eres un profesor de Formación Profesional de Marketing y Publicidad que explica con paciencia.
 
 Un alumno ha fallado varias veces este ejercicio:
-
-EJERCICIO FALLADO:
 ${enunciado}
 
 CONTENIDO DE ESTUDIO:
 ${texto}
 
-Explícale el concepto que necesita entender para resolver ese ejercicio, usando SOLO información del contenido de estudio. No inventes datos.
-
-Responde en español, con lenguaje sencillo, siguiendo EXACTAMENTE este formato de texto (sin JSON, sin markdown, sin asteriscos):
+Explícale el concepto siguiendo EXACTAMENTE este formato de texto (sin JSON, sin markdown, sin asteriscos):
 
 CONCEPTO:
 (el concepto clave en una frase corta)
 
 EXPLICACIÓN:
-(2 o 3 frases sencillas, como si el alumno no supiera nada)
+(2 o 3 frases sencillas)
 
 EJEMPLO:
 (un ejemplo corto y real)
 
 EN UNA FRASE:
 (la idea que debe recordar)
-
-No resuelvas el ejercicio ni des la respuesta literal: explica el concepto.
 `
 
     const respuestaOllama = await fetch(
@@ -975,7 +805,7 @@ No resuelvas el ejercicio ni des la respuesta literal: explica el concepto.
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          model: 'gemma:2b-instruct-q4_K_M',
+          model: process.env.IA_MODELO || 'llama-3.3-70b-versatile',
           prompt,
           stream: false,
           options: {
@@ -987,14 +817,15 @@ No resuelvas el ejercicio ni des la respuesta literal: explica el concepto.
 
     if (!respuestaOllama.ok) {
       throw new Error(
-        `Ollama respondió con ${respuestaOllama.status}`,
+        `El servicio de IA respondió con ${respuestaOllama.status}`,
       )
     }
 
     const datos = await respuestaOllama.json()
+    const textoRespuesta = datos.response || datos.choices?.[0]?.message?.content || ''
 
     res.json({
-      explicacion: String(datos.response || '').trim(),
+      explicacion: String(textoRespuesta || '').trim(),
     })
   } catch (error) {
     console.error('Error explicando el concepto:', error)
@@ -1005,7 +836,6 @@ No resuelvas el ejercicio ni des la respuesta literal: explica el concepto.
   }
 })
 
-// Elige los fragmentos del PDF más útiles para la pregunta
 function seleccionarFragmentos(texto, pregunta, general, maxCaracteres = 4000) {
   const limpio = String(texto || '').replace(/\s+/g, ' ').trim()
 
@@ -1023,7 +853,6 @@ function seleccionarFragmentos(texto, pregunta, general, maxCaracteres = 4000) {
     })
   }
 
-  // Resúmenes y esquemas: fragmentos repartidos por todo el documento
   if (general) {
     const cuantos = Math.max(1, Math.floor(maxCaracteres / tamano))
     const paso = fragmentos.length / cuantos
@@ -1036,7 +865,6 @@ function seleccionarFragmentos(texto, pregunta, general, maxCaracteres = 4000) {
     return elegidos.join('\n...\n')
   }
 
-  // Preguntas concretas: los fragmentos con más palabras en común con la pregunta
   const normalizar = (t) =>
     t
       .toLowerCase()
@@ -1098,30 +926,17 @@ Eres el tutor personal de Kandeh, un estudiante de Grado Superior de Marketing y
 
 Responde en el idioma en que te escriba el alumno (español o catalán), con un tono cercano, claro y motivador.
 Explica con palabras sencillas y ejemplos reales.
-Sé breve: unas 150 palabras como máximo, salvo que pida un resumen o un esquema.
+Sé breve: unas 150 palabras como máximo.
 No uses markdown ni asteriscos. Usa texto plano y guiones para las listas.
-Si te piden un esquema, usa guiones con sangrías.
 ${
   fragmentos
     ? `
-MATERIAL DE ESTUDIO DEL TEMA "${nombreTema}" (fragmentos del PDF del alumno):
+MATERIAL DE ESTUDIO DEL TEMA "${nombreTema}":
 ${fragmentos}
-
-Responde basándote principalmente en este material.
-Si la respuesta no aparece en el material, dilo claramente y, si puedes, responde con conocimiento general avisando de que no sale en sus apuntes.
 `
-    : `
-No hay ningún tema seleccionado. Responde con conocimiento general de marketing y publicidad.
-`
+    : 'No hay ningún tema seleccionado.'
 }
-${
-  perfil
-    ? `
-DATOS DEL ALUMNO (úsalos solo si te pregunta qué estudiar, qué repasar o cómo va):
-${perfil}
-`
-    : ''
-}
+${perfil ? `DATOS DEL ALUMNO:\n${perfil}` : ''}
 `
 
     const mensajesOllama = [
@@ -1133,32 +948,33 @@ ${perfil}
     ]
 
     const respuestaOllama = await fetch(
-  'https://api.groq.com/openai/v1/chat/completions',
-  {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${process.env.GROQ_API_KEY}`
-    },
-    body: JSON.stringify({
-      model: 'llama-3.1-70b-versatile', // o 'llama-3.1-8b-instant'
-      messages: mensajesOllama,
-      temperature: 0.4,
-      max_tokens: 1024
-    }),
-  }
-)
+      'http://localhost:11434/api/chat',
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: process.env.IA_MODELO || 'llama-3.3-70b-versatile',
+          messages: mensajesOllama,
+          options: {
+            temperature: 0.4,
+          },
+        }),
+      },
+    )
 
     if (!respuestaOllama.ok) {
       throw new Error(
-        `Ollama respondió con ${respuestaOllama.status}`,
+        `El servicio de IA respondió con ${respuestaOllama.status}`,
       )
     }
 
     const datos = await respuestaOllama.json()
+    const textoRespuesta = datos.message?.content || datos.response || ''
 
     res.json({
-      respuesta: String(datos.message?.content || '').trim(),
+      respuesta: String(textoRespuesta).trim(),
     })
   } catch (error) {
     console.error('Error en el chat:', error)
@@ -1171,7 +987,7 @@ ${perfil}
 
 app.post('/generar-flashcards', async (req, res) => {
   try {
-    const { texto, cantidad, existentes } = req.body
+    const { texto, cantidad } = req.body
 
     if (!texto) {
       return res.status(400).json({
@@ -1185,26 +1001,18 @@ app.post('/generar-flashcards', async (req, res) => {
     const prompt = `
 Eres profesor de Formación Profesional de Marketing y Publicidad.
 
-A partir del siguiente contenido de estudio, crea ${total} flashcards (tarjetas de estudio) para memorizar conceptos.
+A partir del siguiente contenido de estudio, crea ${total} flashcards (tarjetas de estudio) en formato JSON estricto.
 
 CONTENIDO:
 ${fragmentos}
 
-FLASHCARDS QUE YA EXISTEN (no las repitas ni preguntes lo mismo con otras palabras):
-${JSON.stringify(existentes ?? [])}
-
-REGLAS:
-- "pregunta": una pregunta corta y concreta sobre UN solo concepto, definición o dato. Por ejemplo: "¿Qué es la segmentación de mercados?".
-- "respuesta": la respuesta corta y precisa, de 1 o 2 frases como máximo.
-- Usa solo información que aparezca en el contenido. No inventes nada.
-- La pregunta nunca debe contener la respuesta.
-- Cada flashcard debe tratar un concepto distinto.
-
 Devuelve SOLO un JSON válido con este formato:
-
 {
   "flashcards": [
-    { "pregunta": "¿Qué es...?", "respuesta": "Es..." }
+    {
+      "pregunta": "Pregunta clara",
+      "respuesta": "Respuesta concisa"
+    }
   ]
 }
 `
@@ -1217,13 +1025,12 @@ Devuelve SOLO un JSON válido con este formato:
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          model: 'gemma:2b-instruct-q4_K_M',
+          model: process.env.IA_MODELO || 'llama-3.3-70b-versatile',
           prompt,
           stream: false,
           format: 'json',
           options: {
             temperature: 0.3,
-            num_ctx: 4096,
           },
         }),
       },
@@ -1231,18 +1038,15 @@ Devuelve SOLO un JSON válido con este formato:
 
     if (!respuestaOllama.ok) {
       throw new Error(
-        `Ollama respondió con ${respuestaOllama.status}`,
+        `El servicio de IA respondió con ${respuestaOllama.status}`,
       )
     }
 
     const datos = await respuestaOllama.json()
-    const resultado = JSON.parse(datos.response)
+    const textoRespuesta = datos.response || datos.choices?.[0]?.message?.content || ''
+    const resultado = JSON.parse(textoRespuesta)
 
-    res.json({
-      flashcards: Array.isArray(resultado.flashcards)
-        ? resultado.flashcards
-        : [],
-    })
+    res.json(resultado)
   } catch (error) {
     console.error('Error generando flashcards:', error)
 
@@ -1252,297 +1056,8 @@ Devuelve SOLO un JSON válido con este formato:
   }
 })
 
-app.get('/estado', async (req, res) => {
-  let ollama = false
+const PORT = process.env.PORT || 3000
 
-  try {
-    const respuesta = await fetch('http://localhost:11434/api/tags')
-    ollama = respuesta.ok
-  } catch (error) {
-    ollama = false
-  }
-
-  res.json({ servidor: true, ollama })
-})
-
-app.post('/generar-apuntes', async (req, res) => {
-  try {
-    const { texto, nombreTema } = req.body
-
-    if (!texto) {
-      return res.status(400).json({
-        error: 'No se ha recibido texto.',
-      })
-    }
-
-    const prompt = `
-Eres un profesor de Formación Profesional de Marketing y Publicidad que prepara apuntes de estudio claros.
-
-TEMA: ${nombreTema || ''}
-
-FRAGMENTO DEL MATERIAL:
-${String(texto).slice(0, 3500)}
-
-Resume SOLO lo más importante de este fragmento para estudiar:
-- "titulo": título corto del apartado (máximo 8 palabras).
-- "puntos": entre 3 y 6 frases cortas con las ideas clave (cada una de máximo 25 palabras).
-- "definiciones": entre 0 y 3 definiciones importantes, cada una con "termino" y "definicion" (máximo 25 palabras).
-
-Reglas:
-- Usa únicamente información del fragmento. No inventes nada.
-- Escribe en el mismo idioma que el fragmento.
-- No copies párrafos enteros: sintetiza.
-
-Devuelve SOLO un JSON válido con este formato:
-
-{
-  "titulo": "Título del apartado",
-  "puntos": ["Idea clave 1", "Idea clave 2"],
-  "definiciones": [
-    { "termino": "Término", "definicion": "Definición breve" }
-  ]
-}
-`
-
-    const respuestaOllama = await fetch(
-      'http://localhost:11434/api/generate',
-      {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          model: 'gemma:2b-instruct-q4_K_M',
-          prompt,
-          stream: false,
-          format: 'json',
-          options: {
-            temperature: 0.2,
-            num_ctx: 4096,
-          },
-        }),
-      },
-    )
-
-    if (!respuestaOllama.ok) {
-      throw new Error(
-        `Ollama respondió con ${respuestaOllama.status}`,
-      )
-    }
-
-    const datos = await respuestaOllama.json()
-    const resultado = JSON.parse(datos.response)
-
-    const aTexto = (valor) =>
-      String(valor ?? '').replace(/\s+/g, ' ').trim()
-
-    const puntos = (Array.isArray(resultado.puntos) ? resultado.puntos : [])
-      .filter((punto) => typeof punto === 'string')
-      .map(aTexto)
-      .filter(Boolean)
-      .slice(0, 8)
-
-    const definiciones = (
-      Array.isArray(resultado.definiciones) ? resultado.definiciones : []
-    )
-      .map((definicion) => ({
-        termino: aTexto(definicion?.termino),
-        definicion: aTexto(definicion?.definicion),
-      }))
-      .filter((definicion) => definicion.termino && definicion.definicion)
-      .slice(0, 4)
-
-    if (puntos.length === 0 && definiciones.length === 0) {
-      throw new Error('Gemma no ha devuelto apuntes útiles.')
-    }
-
-    res.json({
-      titulo: aTexto(resultado.titulo) || 'Apartat',
-      puntos,
-      definiciones,
-    })
-  } catch (error) {
-    console.error('Error generando apuntes:', error)
-
-    res.status(500).json({
-      error: 'No se han podido generar los apuntes.',
-    })
-  }
-})
-
-app.post('/generar-vocabulario', async (req, res) => {
-  try {
-    const { tema, idiomaTraduccion, cantidad, existentes } = req.body
-
-    if (!tema) {
-      return res.status(400).json({ error: 'Falta el tema.' })
-    }
-
-    const total = Math.min(Number(cantidad) || 10, 15)
-
-    const prompt = `
-You are an English teacher for students of a vocational course in Marketing and Advertising.
-
-Create ${total} useful vocabulary entries of Professional English about this topic: "${tema}".
-
-WORDS THAT ALREADY EXIST (do not repeat them):
-${JSON.stringify(existentes ?? [])}
-
-For each entry:
-- "termino": the English word or short phrase (maximum 5 words) used in a professional setting.
-- "traduccion": its translation into ${idiomaTraduccion || 'Catalan'} (short and precise).
-- "ejemplo": a short example sentence in English (maximum 15 words) that uses the term.
-
-Return ONLY valid JSON with this format:
-
-{
-  "palabras": [
-    { "termino": "customer retention", "traduccion": "translation here", "ejemplo": "Example sentence here." }
-  ]
-}
-`
-
-    const respuestaOllama = await fetch(
-      'http://localhost:11434/api/generate',
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          model: 'gemma:2b-instruct-q4_K_M',
-          prompt,
-          stream: false,
-          format: 'json',
-          options: { temperature: 0.4, num_ctx: 4096 },
-        }),
-      },
-    )
-
-    if (!respuestaOllama.ok) {
-      throw new Error(`Ollama respondió con ${respuestaOllama.status}`)
-    }
-
-    const datos = await respuestaOllama.json()
-    const resultado = JSON.parse(datos.response)
-
-    const aTexto = (valor) =>
-      String(valor ?? '').replace(/\s+/g, ' ').trim()
-
-    const palabras = (Array.isArray(resultado.palabras) ? resultado.palabras : [])
-      .map((palabra) => ({
-        termino: aTexto(palabra?.termino),
-        traduccion: aTexto(palabra?.traduccion),
-        ejemplo: aTexto(palabra?.ejemplo),
-      }))
-      .filter((palabra) => palabra.termino && palabra.traduccion)
-      .slice(0, total)
-
-    if (palabras.length === 0) {
-      throw new Error('Gemma no ha devuelto vocabulario útil.')
-    }
-
-    res.json({ palabras })
-  } catch (error) {
-    console.error('Error generando vocabulario:', error)
-
-    res.status(500).json({ error: 'No se ha podido generar el vocabulario.' })
-  }
-})
-
-app.post('/corregir-redaccion', async (req, res) => {
-  try {
-    const { texto, tipo } = req.body
-
-    if (!texto || String(texto).trim().length < 15) {
-      return res.status(400).json({ error: 'El texto es demasiado corto.' })
-    }
-
-    const prompt = `
-You are an English teacher correcting a student's professional writing.
-
-TEXT TYPE: ${tipo || 'email'}
-
-STUDENT TEXT:
-${String(texto).slice(0, 2500)}
-
-Correct the text. Fix grammar, spelling, vocabulary and professional tone. Keep the student's ideas.
-
-Return ONLY valid JSON with this format:
-
-{
-  "texto_corregido": "the full corrected text",
-  "errores": [
-    { "original": "wrong fragment", "correccion": "corrected fragment", "explicacion": "short explanation in Catalan (maximum 20 words)" }
-  ],
-  "puntuacion": 7,
-  "consejo": "one useful tip in Catalan (maximum 30 words)"
-}
-
-Rules:
-- "puntuacion" is an integer from 0 to 10.
-- Include a maximum of 8 mistakes in "errores". If there are no mistakes, use an empty list.
-- Do not invent mistakes that are not in the text.
-`
-
-    const respuestaOllama = await fetch(
-      'http://localhost:11434/api/generate',
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          model: 'gemma:2b-instruct-q4_K_M',
-          prompt,
-          stream: false,
-          format: 'json',
-          options: { temperature: 0.1, num_ctx: 4096 },
-        }),
-      },
-    )
-
-    if (!respuestaOllama.ok) {
-      throw new Error(`Ollama respondió con ${respuestaOllama.status}`)
-    }
-
-    const datos = await respuestaOllama.json()
-    const resultado = JSON.parse(datos.response)
-
-    const aTexto = (valor) =>
-      String(valor ?? '').replace(/\s+/g, ' ').trim()
-
-    const errores = (Array.isArray(resultado.errores) ? resultado.errores : [])
-      .map((error) => ({
-        original: aTexto(error?.original),
-        correccion: aTexto(error?.correccion),
-        explicacion: aTexto(error?.explicacion),
-      }))
-      .filter((error) => error.original && error.correccion)
-      .slice(0, 8)
-
-    const puntuacion = Math.max(
-      0,
-      Math.min(10, Math.round(Number(resultado.puntuacion) || 0)),
-    )
-
-    const corregido = aTexto(resultado.texto_corregido)
-
-    if (!corregido) {
-      throw new Error('Gemma no ha devuelto el texto corregido.')
-    }
-
-    res.json({
-      texto_corregido: corregido,
-      errores,
-      puntuacion,
-      consejo: aTexto(resultado.consejo),
-    })
-  } catch (error) {
-    console.error('Error corrigiendo la redacción:', error)
-
-    res.status(500).json({ error: 'No se ha podido corregir el texto.' })
-  }
-})
-
-app.listen(process.env.PORT || 3001, () => {
-  console.log(
-    'Servidor IA escuchando en http://localhost:3001',
-  )
+app.listen(PORT, () => {
+  console.log(`Servidor escuchando en el puerto ${PORT}`)
 })
