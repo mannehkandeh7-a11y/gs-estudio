@@ -11,7 +11,7 @@ const upload = multer({
 const fetchOriginal = globalThis.fetch.bind(globalThis)
 
 if (true) {
-  const modeloNube = process.env.IA_MODELO || 'llama-3.1-8b-instant'
+  const modeloNube = process.env.IA_MODELO || 'llama3-8b-8192'
 
   globalThis.fetch = async (url, opciones = {}) => {
     const direccion = typeof url === 'string' ? url : url.url || String(url)
