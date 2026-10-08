@@ -1,6 +1,5 @@
 const express = require('express')
 const { PDFParse } = require('pdf-parse')
-
 const cors = require('cors')
 const multer = require('multer')
 
@@ -8,9 +7,7 @@ const upload = multer({
   storage: multer.memoryStorage(),
 })
 
-// ----- IA en la nube (opcional) -----
-// Si existen IA_URL e IA_KEY, las llamadas a Ollama se redirigen a un
-// proveedor compatible con OpenAI (por ejemplo Groq). Si no, se usa Ollama.
+// ----- IA en la nube (Groq) -----
 const fetchOriginal = globalThis.fetch.bind(globalThis)
 
 if (process.env.IA_URL && process.env.IA_KEY) {
@@ -59,9 +56,7 @@ if (process.env.IA_URL && process.env.IA_KEY) {
 
     if (!respuesta.ok) {
       const detalle = await respuesta.text()
-
-      console.error('Error del proveedor de IA:', respuesta.status, detalle)
-
+      console.error('Error del proveedor de IA (Groq):', respuesta.status, detalle)
       return new Response(JSON.stringify({ error: detalle }), {
         status: respuesta.status,
         headers: cabeceras,
@@ -155,6 +150,10 @@ app.get('/', (req, res) => {
   res.json({
     mensaje: 'Servidor IA funcionando',
   })
+})
+
+app.get('/estado', (req, res) => {
+  res.json({ estado: 'ok' })
 })
 
 app.post('/corregir', async (req, res) => {
