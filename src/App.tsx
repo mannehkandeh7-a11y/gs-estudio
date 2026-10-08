@@ -1185,7 +1185,7 @@ useEffect(() => {
       const datos = await respuesta.json()
 
       fallosSeguidos = 0
-      setEstadoServidor(datos.ollama ? 'ok' : 'ollama')
+      setEstadoServidor('ok')
 
       if (datos.ollama) {
         setAvisoCerrado(false)
@@ -2035,8 +2035,8 @@ async function generarApuntes() {
     await cargarApuntes(temaApuntesId)
   } catch (error) {
     console.error('Error generando los apuntes:', error)
-
-    window.alert("No s'han pogut generar els apunts. Mira que el servidor i Ollama estiguin encesos.")
+window.alert("No s'han pogut generar els apunts. Torna-ho a provar.")
+    
   } finally {
     setGenerandoApuntes(false)
   }
@@ -2563,7 +2563,7 @@ async function preguntarIAVisor(tipo: 'explicar' | 'resumir' | 'libre') {
     console.error('Error preguntando a la IA desde el visor:', error)
 
     setRespuestaIAVisor(
-      'No he pogut respondre ara mateix. Comprova que el servidor i Ollama estan encesos.',
+      'No he pogut respondre ara mateix. Torna-ho a provar en un moment.',
     )
   } finally {
     setPreguntandoVisor(false)
@@ -7317,11 +7317,8 @@ if (errorEjercicios) {
             borderBottom: '1px solid #ffd8a8',
           }}
         >
-          <span>
-            {estadoServidor === 'servidor'
-              ? `⚠️ No hi ha connexió amb el servidor d'IA (${API_IA}). Engega'l amb node i torna-ho a provar.`
-              : '⚠️ Ollama no respon. Obre Ollama perquè la IA funcioni.'}
-          </span>
+          {/* Aviso de Ollama eliminado porque usas la nube */}
+          {null}
 
           <button
             type="button"

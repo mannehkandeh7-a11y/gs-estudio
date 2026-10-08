@@ -10,7 +10,7 @@ const upload = multer({
 // ----- IA en la nube (Groq) -----
 const fetchOriginal = globalThis.fetch.bind(globalThis)
 
-if (process.env.IA_URL && process.env.IA_KEY) {
+if (true) {
   const modeloNube = process.env.IA_MODELO || 'llama-3.1-8b-instant'
 
   globalThis.fetch = async (url, opciones = {}) => {
