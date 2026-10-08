@@ -1141,7 +1141,7 @@ ${perfil}
       'Authorization': `Bearer ${process.env.GROQ_API_KEY}`
     },
     body: JSON.stringify({
-      model: 'llama-3.3-70b-versatile', // Modelo gratuito y rapidísimo en Groq
+      model: 'llama-3.1-70b-versatile', // o 'llama-3.1-8b-instant'
       messages: mensajesOllama,
       temperature: 0.4,
       max_tokens: 1024
