@@ -14,7 +14,7 @@ const upload = multer({
 const fetchOriginal = globalThis.fetch.bind(globalThis)
 
 if (process.env.IA_URL && process.env.IA_KEY) {
-  const modeloNube = process.env.IA_MODELO || 'llama-3.3-70b-versatile'
+  const modeloNube = process.env.IA_MODELO || 'llama-3.1-8b-instant'
 
   globalThis.fetch = async (url, opciones = {}) => {
     const direccion = typeof url === 'string' ? url : url.url || String(url)
@@ -282,7 +282,7 @@ No devuelvas ningún otro campo.
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          model: process.env.IA_MODELO || 'llama-3.3-70b-versatile',
+          model: process.env.IA_MODELO || 'llama-3.1-8b-instant',
           prompt,
           stream: false,
           format: 'json',
@@ -431,7 +431,7 @@ Devuelve únicamente el texto de la recomendación.
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: process.env.IA_MODELO || 'llama-3.3-70b-versatile',
+        model: process.env.IA_MODELO || 'llama-3.1-8b-instant',
         prompt,
         stream: false,
       }),
@@ -555,7 +555,7 @@ No inventes información que no aparezca en el contenido.
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          model: process.env.IA_MODELO || 'llama-3.3-70b-versatile',
+          model: process.env.IA_MODELO || 'llama-3.1-8b-instant',
           prompt,
           stream: false,
           format: 'json',
@@ -640,7 +640,7 @@ Genera exactamente 5 ejercicios.
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          model: process.env.IA_MODELO || 'llama-3.3-70b-versatile',
+          model: process.env.IA_MODELO || 'llama-3.1-8b-instant',
           prompt,
           stream: false,
           format: 'json',
@@ -724,7 +724,7 @@ Devuelve SOLO un JSON válido con este formato:
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          model: process.env.IA_MODELO || 'llama-3.3-70b-versatile',
+          model: process.env.IA_MODELO || 'llama-3.1-8b-instant',
           prompt,
           stream: false,
           format: 'json',
@@ -805,7 +805,7 @@ EN UNA FRASE:
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          model: process.env.IA_MODELO || 'llama-3.3-70b-versatile',
+          model: process.env.IA_MODELO || 'llama-3.1-8b-instant',
           prompt,
           stream: false,
           options: {
@@ -955,7 +955,7 @@ ${perfil ? `DATOS DEL ALUMNO:\n${perfil}` : ''}
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          model: process.env.IA_MODELO || 'llama-3.3-70b-versatile',
+          model: process.env.IA_MODELO || 'llama-3.1-8b-instant',
           messages: mensajesOllama,
           options: {
             temperature: 0.4,
@@ -1025,7 +1025,7 @@ Devuelve SOLO un JSON válido con este formato:
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          model: process.env.IA_MODELO || 'llama-3.3-70b-versatile',
+          model: process.env.IA_MODELO || 'llama-3.1-8b-instant',
           prompt,
           stream: false,
           format: 'json',
