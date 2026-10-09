@@ -7,11 +7,35 @@ const upload = multer({
   storage: multer.memoryStorage(),
 })
 
-// ----- IA en la nube (Groq) -----
+// ----- IA en la nube (opcional) -----
+// Si existen IA_URL e IA_KEY, las llamadas a Ollama se redirigen a un
+// proveedor compatible con OpenAI (por ejemplo Groq). Si no, se usa Ollama.
 const fetchOriginal = globalThis.fetch.bind(globalThis)
 
-if (true) {
-  const modeloNube = process.env.IA_MODELO || 'llama3-8b-8192'
+if (process.env.IA_URL && process.env.IA_KEY) {
+  // Modelo principal y modelo de respaldo (cada uno tiene su propio límite)
+  const modelos = [
+    process.env.IA_MODELO || 'openai/gpt-oss-120b',
+    process.env.IA_MODELO_RESPALDO || 'openai/gpt-oss-20b',
+  ].filter((modelo, indice, lista) => modelo && lista.indexOf(modelo) === indice)
+
+  const esperar = (milisegundos) =>
+    new Promise((resolver) => setTimeout(resolver, milisegundos))
+
+  // Si el modelo devuelve el JSON dentro de ``` o con texto alrededor, se limpia
+  const limpiarJson = (texto) => {
+    const sinVallas = texto
+      .replace(/^```(?:json)?\s*/i, '')
+      .replace(/\s*```$/i, '')
+      .trim()
+
+    const inicio = sinVallas.indexOf('{')
+    const fin = sinVallas.lastIndexOf('}')
+
+    return inicio !== -1 && fin > inicio
+      ? sinVallas.slice(inicio, fin + 1)
+      : sinVallas
+  }
 
   globalThis.fetch = async (url, opciones = {}) => {
     const direccion = typeof url === 'string' ? url : url.url || String(url)
@@ -32,53 +56,99 @@ if (true) {
 
     const cuerpo = JSON.parse(opciones.body || '{}')
 
-    const peticion = {
-      model: modeloNube,
-      messages:
-        ruta === '/api/chat'
-          ? cuerpo.messages
-          : [{ role: 'user', content: cuerpo.prompt }],
-      temperature: cuerpo.options?.temperature ?? 0.3,
-    }
+    const mensajes =
+      ruta === '/api/chat'
+        ? cuerpo.messages
+        : [{ role: 'user', content: cuerpo.prompt }]
 
-    if (cuerpo.format === 'json') {
-      peticion.response_format = { type: 'json_object' }
-    }
+    const quiereJson = cuerpo.format === 'json'
+    let usarFormatoJson = quiereJson
+    let ultimaRespuesta = null
 
-    const respuesta = await fetchOriginal(`${process.env.IA_URL}/chat/completions`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${process.env.IA_KEY}`,
-      },
-      body: JSON.stringify(peticion),
-    })
+    for (let intento = 0; intento < 5; intento++) {
+      const modelo = modelos[intento % modelos.length]
 
-    if (!respuesta.ok) {
+      const peticion = {
+        model: modelo,
+        messages: mensajes,
+        temperature: cuerpo.options?.temperature ?? 0.3,
+      }
+
+      if (modelo.includes('gpt-oss')) {
+        peticion.reasoning_effort = 'low'
+      }
+
+      if (usarFormatoJson) {
+        peticion.response_format = { type: 'json_object' }
+      }
+
+      const respuesta = await fetchOriginal(
+        `${process.env.IA_URL}/chat/completions`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${process.env.IA_KEY}`,
+          },
+          body: JSON.stringify(peticion),
+        },
+      )
+
+      if (respuesta.ok) {
+        const datos = await respuesta.json()
+        let texto = datos.choices?.[0]?.message?.content ?? ''
+
+        if (quiereJson) {
+          texto = limpiarJson(texto)
+        }
+
+        const resultado =
+          ruta === '/api/chat'
+            ? { message: { role: 'assistant', content: texto } }
+            : { response: texto }
+
+        return new Response(JSON.stringify(resultado), {
+          status: 200,
+          headers: cabeceras,
+        })
+      }
+
       const detalle = await respuesta.text()
-      console.error('Error del proveedor de IA (Groq):', respuesta.status, detalle)
-      return new Response(JSON.stringify({ error: detalle }), {
+
+      console.error(
+        `Error del proveedor de IA (${modelo}):`,
+        respuesta.status,
+        detalle,
+      )
+
+      ultimaRespuesta = new Response(JSON.stringify({ error: detalle }), {
         status: respuesta.status,
         headers: cabeceras,
       })
+
+      // El modelo no admite el modo JSON: se reintenta sin él
+      if (respuesta.status === 400 && usarFormatoJson) {
+        usarFormatoJson = false
+        continue
+      }
+
+      // Límite alcanzado: se prueba el otro modelo y, si los dos están llenos, se espera
+      if (respuesta.status === 429) {
+        const segundos = Number(respuesta.headers.get('retry-after')) || 10
+
+        if (intento % modelos.length === modelos.length - 1) {
+          await esperar(Math.min(segundos, 20) * 1000)
+        }
+
+        continue
+      }
+
+      break
     }
 
-    const datos = await respuesta.json()
-    const texto = datos.choices?.[0]?.message?.content ?? ''
-
-    const resultado =
-      ruta === '/api/chat'
-        ? { message: { role: 'assistant', content: texto } }
-        : { response: texto }
-
-    return new Response(JSON.stringify(resultado), {
-      status: 200,
-      headers: cabeceras,
-    })
+    return ultimaRespuesta
   }
 }
-
-const app = express()
 
 const origenesPermitidos = (process.env.ORIGENES_PERMITIDOS || '')
   .split(',')
@@ -99,6 +169,21 @@ app.use(
 )
 
 app.use(express.json({ limit: '25mb' }))
+
+// En la nube, los textos largos se recortan para respetar el límite de tokens por minuto
+app.use((req, res, next) => {
+  if (process.env.IA_URL && req.body) {
+    const maximo = Number(process.env.IA_MAX_CARACTERES) || 9000
+
+    for (const campo of ['texto', 'contexto']) {
+      if (typeof req.body[campo] === 'string' && req.body[campo].length > maximo) {
+        req.body[campo] = req.body[campo].slice(0, maximo)
+      }
+    }
+  }
+
+  next()
+})
 
 // ----- Acceso: en la nube solo entra quien tenga sesión de Supabase -----
 const tokensValidos = new Map()
